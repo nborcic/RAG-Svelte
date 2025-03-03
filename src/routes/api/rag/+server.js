@@ -7,6 +7,9 @@ import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
+import savedMessages from '$lib/savedMessages.json';
+
+
 
 dotenv.config();
 
@@ -79,7 +82,7 @@ const splitText = async (documents) => {
       throw new Error("Documents array is empty or invalid.");
     }
 
-    // Check if any document is missing the pageContent field
+
     documents.forEach((doc, index) => {
       if (!doc.pageContent) {
         console.error(`Document at index ${index} is missing 'pageContent':`, doc);
@@ -92,7 +95,7 @@ const splitText = async (documents) => {
       chunkOverlap: 200
     });
 
-    // Split the documents
+
     return await splitter.splitDocuments(documents);
   } catch (error) {
     console.error('Error splitting documents:', error);
@@ -116,10 +119,26 @@ const createVectorStore = async (chunks) => {
 };
 
 export async function POST({ request }) {
+  if (!request) {
+    return json({ error: 'Invalid request' }, { status: 400 });
+  }
+  if (!request.headers.get('content-type').includes('application/json')) {
+    return json({ error: 'Invalid content type' }, { status: 400 });
+  }
+
+
+
+
   try {
     const body = await request.json();
-    const { question } = body;
+    const { message } = body;
     const folderPath = './static/documents';
+    const userMessage = {
+      role: "USER",
+      content: message,
+    };
+    savedMessages.push(userMessage);
+    fs.writeFile('src/lib/savedMessages.json', JSON.stringify(savedMessages));
 
     // 1. Process documents from folder
     const documents = await processFolder(folderPath);
@@ -140,12 +159,24 @@ export async function POST({ request }) {
     }
 
     // 4. Perform similarity search
-    const results = await vectorStore.similaritySearch(question, 2);
+    const results = await vectorStore.similaritySearch(message, 2);
     const context = results.map((r) => r.pageContent).join('\n');
 
     // 5. Generate response using the AI model
-    const response = await model.invoke(`Question: ${question}\nContext: ${context}`);
-    return json({ answer: response });
+    const response = await model.invoke(`message: ${message}\nContext: ${context}`);
+    //create new obj for gpt response
+    if (response) {
+      const gptResponse = {
+        role: "GPT",
+        content: response,
+      };
+      //push gpt response to savedMessages
+      savedMessages.push(gptResponse);
+      //add gpt response to savedMessages.json
+      fs.writeFile('src/lib/savedMessages.json', JSON.stringify(savedMessages));
+    }
+
+    return Response({ status: 200 })
   } catch (error) {
     console.error('Error in RAG system:', error);
     return json({ error: 'Internal server error' }, { status: 500 });
