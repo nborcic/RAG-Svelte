@@ -1,0 +1,13 @@
+services:
+  rag-chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - .svelte-kit:/svelte-kit/app
+      - /svelte-kit/app/node_modules
+    command: npm run preview
